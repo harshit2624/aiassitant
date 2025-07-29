@@ -22,7 +22,7 @@ scheduler = BackgroundScheduler()
 # Twilio credentials
 TWILIO_ACCOUNT_SID = 'AC27c82b26078be0e551148c5fdf2d394a'
 TWILIO_AUTH = '4320ce4c54483119eb5baa53b78a2508'
-TWILIO_PHONE_NUMBER = '++18505346392'  # Replace with your Twilio phone number      
+TWILIO_PHONE_NUMBER = '+18505346392'  # Replace with your Twilio phone number      
 client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH)        
 # Price thresholds for SOL  
 
@@ -249,10 +249,5 @@ def home():
 
 if __name__ == '__main__':
     app.run(debug=True)
-git init
-git add .
-
-
-
 
 
