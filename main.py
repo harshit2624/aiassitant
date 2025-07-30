@@ -97,14 +97,27 @@ SOL_PRICE_THRESHOLD = 20.0  # Example threshold for SOL price
 SOL_PRICE_URL = 'https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd'        
 
 
-def get_sol_price():
+def get_asset_price(asset_symbol):
+    """
+    Fetch current price for given asset symbol.
+    For cryptos, use Binance API with symbol + 'USDT'.
+    For Indian stocks, return None (or implement API if available).
+    """
     try:
-        response = requests.get(SOL_PRICE_URL)
-        data = response.json()
-        return data['solana']['usd']
+        # Check if asset is crypto (simple check: if symbol is uppercase and length <=5)
+        if asset_symbol.isalpha() and asset_symbol.isupper() and len(asset_symbol) <= 5:
+            # For cryptos, use Binance API
+            symbol = asset_symbol + 'USDT'
+            response = requests.get(f'https://api.binance.com/api/v3/ticker/price?symbol={symbol}')
+            data = response.json()
+            price = float(data['price'])
+            return price
+        else:
+            # For Indian stocks, no API implemented, return None or mock
+            return None
     except Exception as e:
-        print(f"Error fetching SOL price: {e}")
-        return None     
+        print(f"Error fetching price for {asset_symbol}: {e}")
+        return None
 
 def check_sol_price():      
     sol_price = get_sol_price()
@@ -207,6 +220,7 @@ def solana_limit():
     solana_doc = solana_collection.find_one({})
     lower = solana_doc['lower'] if solana_doc and 'lower' in solana_doc else ''
     upper = solana_doc['upper'] if solana_doc and 'upper' in solana_doc else ''
+    current_price = get_sol_price()
     if request.method == 'POST':
         try:
             lower = float(request.form.get('lower'))
@@ -230,6 +244,7 @@ def solana_limit():
         <body>
             <div class="solana-card">
                 <h2 class="mb-4" style="font-weight:700;">Solana Price Alert</h2>
+                <h4>Current Solana Price: ${{ current_price if current_price is not none else 'Unavailable' }}</h4>
                 <form method="post" class="mb-3">
                     <div class="mb-2">
                         <label>Lower Limit ($)</label>
@@ -246,7 +261,7 @@ def solana_limit():
             </div>
         </body>
         </html>
-    ''', message=message)
+    ''', message=message, current_price=current_price)
 
 # Background job to check Solana price and send alert
 import threading
@@ -504,6 +519,7 @@ schedule_form_template = '''
 def meetings_list():
     meetings = list(meetings_collection.find())
     solana_triggers = list(solana_collection.find())
+    crypto_stock_limits = list(crypto_stock_collection.find())
     current_price = None
     try:
         response = requests.get(SOL_PRICE_URL)
@@ -511,6 +527,11 @@ def meetings_list():
         current_price = data['solana']['usd']
     except Exception as e:
         print(f"Error fetching SOL price: {e}")
+
+    # Fetch current prices for crypto and stock limits
+    for limit in crypto_stock_limits:
+        limit['current_price'] = get_asset_price(limit['asset'])
+
     return render_template_string('''
     <!DOCTYPE html>
     <html lang="en">
@@ -523,6 +544,8 @@ def meetings_list():
             .meeting-card { background: #fff; border-radius: 1rem; box-shadow: 0 4px 32px rgba(0,0,0,0.08); padding: 1.5rem 2rem; margin-bottom: 1.5rem; }
             .solana-limits { border-radius: 0.7rem; padding: 1rem 1.5rem; margin-bottom: 2rem; border: 1px solid #10a37f22; }
             .alert-triggered { background-color: #f8d7da; border-color: #f5c2c7; }
+            .crypto-stock-limits { border-radius: 0.7rem; padding: 1rem 1.5rem; margin-bottom: 2rem; border: 1px solid #1070a322; }
+            .alert-crypto-triggered { background-color: #f8f0da; border-color: #f5e2c7; }
         </style>
     </head>
     <body>
@@ -533,7 +556,7 @@ def meetings_list():
                 {% if solana_triggers %}
                     <ul class="list-group mb-3">
                     {% for t in solana_triggers %}
-                        {% set triggered = (current_price < t['lower'] or current_price > t['upper']) %}
+                        {% set triggered = (current_price is not none and t['lower'] is not none and t['upper'] is not none and (current_price < t['lower'] or current_price > t['upper'])) %}
                         <li class="list-group-item {% if triggered %}alert-triggered{% endif %}">
                             Alert Range: <b>${{ t['lower'] }}</b> - <b>${{ t['upper'] }}</b>
                             {% if triggered %}
@@ -544,6 +567,24 @@ def meetings_list():
                     </ul>
                 {% else %}
                     <div class="alert alert-info">No active Solana alerts.</div>
+                {% endif %}
+            </div>
+            <div class="crypto-stock-limits mb-4">
+                <b>Crypto & Indian Stocks Price Alerts:</b><br>
+                {% if crypto_stock_limits %}
+                    <ul class="list-group mb-3">
+                    {% for limit in crypto_stock_limits %}
+                        {% set triggered = (limit.current_price is not none and limit.lower is not none and limit.upper is not none and (limit.current_price < limit.lower or limit.current_price > limit.upper)) %}
+                        <li class="list-group-item {% if triggered %}alert-crypto-triggered{% endif %}">
+                            Asset: <b>{{ limit.asset }}</b> | Current Price: <b>{{ limit.current_price if limit.current_price is not none else 'Unavailable' }}</b> | Alert Range: <b>${{ limit.lower }}</b> - <b>${{ limit.upper }}</b>
+                            {% if triggered %}
+                                <span class="badge bg-warning text-dark">Triggered</span>
+                            {% endif %}
+                        </li>
+                    {% endfor %}
+                    </ul>
+                {% else %}
+                    <div class="alert alert-info">No active Crypto/Stock alerts.</div>
                 {% endif %}
             </div>
             {% if meetings %}
@@ -562,7 +603,114 @@ def meetings_list():
         </div>
     </body>
     </html>
-    ''', meetings=meetings, solana_triggers=solana_triggers, current_price=current_price)
+    ''', meetings=meetings, solana_triggers=solana_triggers, current_price=current_price, crypto_stock_limits=crypto_stock_limits)
+
+crypto_stock_collection = mongo_db['crypto_stock_limits']
+
+@app.route('/crypto_stock_limits', methods=['GET', 'POST'])
+def crypto_stock_limits():
+    message = None
+    # Predefined list of popular cryptos and Indian stocks symbols for autocomplete
+    asset_options = [
+        'BTC', 'ETH', 'SOL', 'ADA', 'XRP', 'DOT', 'DOGE', 'LTC', 'BCH', 'LINK',
+        'INFY', 'TCS', 'HDFCBANK', 'RELIANCE', 'ICICIBANK', 'HINDUNILVR', 'SBIN', 'KOTAKBANK', 'LT', 'AXISBANK'
+    ]
+    # Load current limits from DB
+    limits = list(crypto_stock_collection.find())
+    if request.method == 'POST':
+        try:
+            asset = request.form.get('asset')
+            lower = float(request.form.get('lower'))
+            upper = float(request.form.get('upper'))
+            if not asset:
+                message = "Asset name is required."
+            else:
+                # Check if asset already exists
+                existing = crypto_stock_collection.find_one({'asset': asset})
+                if existing:
+                    crypto_stock_collection.update_one({'asset': asset}, {'$set': {'lower': lower, 'upper': upper, 'notified': False}})
+                    message = f"Updated alert for {asset}: Lower = {lower}, Upper = {upper}"
+                else:
+                    crypto_stock_collection.insert_one({'asset': asset, 'lower': lower, 'upper': upper, 'notified': False})
+                    message = f"Added alert for {asset}: Lower = {lower}, Upper = {upper}"
+                limits = list(crypto_stock_collection.find())
+        except Exception as e:
+            message = f"Invalid input: {e}"
+
+    # Fetch current prices for each limit
+    for limit in limits:
+        limit['current_price'] = get_asset_price(limit['asset'])
+
+    return render_template_string('''
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <title>Crypto & Indian Stocks Limits</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+        <style>
+            body { background: #f7f7f8; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 2rem; }
+            .limits-card { border-radius: 1rem; box-shadow: 0 4px 32px rgba(0,0,0,0.08); padding: 2rem; max-width: 600px; width: 100%; background: #fff; margin-bottom: 2rem; }
+            table { width: 100%; }
+            th, td { padding: 0.75rem; text-align: left; }
+            th { background-color: #10a37f22; }
+            .alert-triggered { background-color: #f8d7da; }
+        </style>
+    </head>
+    <body>
+        <div class="limits-card">
+            <h2 class="mb-4" style="font-weight:700;">Set Limits for Cryptos & Indian Stocks</h2>
+            <form method="post" class="mb-4">
+                <div class="mb-3">
+                    <label>Asset Symbol (e.g., BTC, INFY)</label>
+                    <input list="assetOptions" name="asset" class="form-control" required>
+                    <datalist id="assetOptions">
+                        {% for option in asset_options %}
+                        <option value="{{ option }}">
+                        {% endfor %}
+                    </datalist>
+                </div>
+                <div class="mb-3">
+                    <label>Lower Limit</label>
+                    <input type="number" step="0.01" name="lower" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label>Upper Limit</label>
+                    <input type="number" step="0.01" name="upper" class="form-control" required>
+                </div>
+                <button type="submit" class="btn btn-primary w-100">Add / Update Alert</button>
+            </form>
+            {% if message %}
+                <div class="alert alert-info">{{ message }}</div>
+            {% endif %}
+            {% if limits %}
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Asset</th>
+                            <th>Lower Limit</th>
+                            <th>Upper Limit</th>
+                            <th>Current Price</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for limit in limits %}
+                        <tr class="{% if limit.notified %}alert-triggered{% endif %}">
+                            <td>{{ limit.asset }}</td>
+                            <td>{{ limit.lower }}</td>
+                            <td>{{ limit.upper }}</td>
+                            <td>{{ limit.current_price if limit.current_price is not none else 'Unavailable' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p>No alerts set.</p>
+            {% endif %}
+            <a href="/" class="btn btn-secondary mt-3">Back to Home</a>
+        </div>
+    </body>
+    </html>
+    ''', message=message, limits=limits, asset_options=asset_options)
 
 @app.route('/')
 def home():
@@ -622,6 +770,10 @@ def home():
             <a href="/meetings" class="icon-card icon-btn">
                 <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" stroke="#10a37f" stroke-width="2"/><path d="M8 10h8M8 14h8" stroke="#10a37f" stroke-width="2"/></svg>
                 View Scheduled Meetings & Events
+            </a>
+            <a href="/crypto_stock_limits" class="icon-card icon-btn">
+                <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="#10a37f" stroke-width="2"/><path d="M8 12h8M12 8v8" stroke="#10a37f" stroke-width="2"/></svg>
+                Crypto & Indian Stocks Limits
             </a>
         </div>
     </body>
