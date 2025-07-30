@@ -3,4 +3,4 @@ APScheduler
 twilio
 requests
 python-dotenv
-pymongo
+pymongo>=4.5.0

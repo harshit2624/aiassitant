@@ -30,7 +30,7 @@ import ssl
 # MongoDB Atlas connection
 MONGO_URI = "mongodb+srv://harshitvj24:Harshit%40321@cluster0.2rw2irv.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 try:
-    mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+    mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000, tls=True, tlsAllowInvalidCertificates=True)
     mongo_client.server_info()  # Force connection on a request as a test
     print("MongoDB connection successful")
 except Exception as e:
