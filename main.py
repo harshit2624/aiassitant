@@ -43,7 +43,7 @@ app = Flask(__name__)
 scheduler = BackgroundScheduler()
 # Twilio credentials
 TWILIO_ACCOUNT_SID = 'AC27c82b26078be0e551148c5fdf2d394a'
-TWILIO_AUTH = '9b95d5d99e129525fc0a008b570ddb88'
+TWILIO_AUTH = '503b9f7cb975fc087de53145b85fbe68'
 TWILIO_PHONE_NUMBER = '+18505346392'  # Replace with your Twilio phone number      
 client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH)        
 
