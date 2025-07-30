@@ -29,12 +29,17 @@ import ssl
 
 # MongoDB Atlas connection
 MONGO_URI = "mongodb+srv://harshitvj24:Harshit%40321@cluster0.2rw2irv.mongodb.net/?retryWrites=false&w=majority&tls=true&tlsAllowInvalidCertificates=true&appName=Cluster0"
+from pymongo.errors import ServerSelectionTimeoutError
+
 try:
     mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000, tls=True, tlsAllowInvalidCertificates=True)
     mongo_client.server_info()  # Force connection on a request as a test
     print("MongoDB connection successful")
-except Exception as e:
+except ServerSelectionTimeoutError as e:
     print(f"MongoDB connection failed: {e}")
+    # Fallback to local MongoDB for development/testing
+    mongo_client = MongoClient("mongodb://localhost:27017/")
+    print("Connected to local MongoDB fallback")
 mongo_db = mongo_client['meeting_db']
 meetings_collection = mongo_db['meetings']
 solana_collection = mongo_db['solana_alert']         
