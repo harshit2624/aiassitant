@@ -2,3 +2,5 @@ Flask
 APScheduler
 twilio
 requests
+python-dotenv
+pymongo
