@@ -28,21 +28,40 @@ import smtplib
 import ssl
 
 # MongoDB Atlas connection
-MONGO_URI = "mongodb+srv://harshitvj24:Harshit%40321@cluster0.2rw2irv.mongodb.net/?retryWrites=false&w=majority&tls=true&tlsAllowInvalidCertificates=true&appName=Cluster0"
-from pymongo.errors import ServerSelectionTimeoutError
+MONGO_URI = "mongodb+srv://harshitvj24:Harshit%40321@cluster0.2rw2irv.mongodb.net/?retryWrites=true&w=majority&tls=true&ssl=true&socketTimeoutMS=30000&connectTimeoutMS=30000&serverSelectionTimeoutMS=5000"
 
 try:
-    mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000, tls=True, tlsAllowInvalidCertificates=True)
-    mongo_client.server_info()  # Force connection on a request as a test
+    mongo_client = MongoClient(
+        MONGO_URI,
+        serverSelectionTimeoutMS=5000,
+        retryWrites=True,
+        tls=True,
+        tlsInsecure=False,  # Better security than tlsAllowInvalidCertificates
+        socketTimeoutMS=30000,
+        connectTimeoutMS=30000
+    )
+    # Test the connection
+    mongo_client.admin.command('ping')
     print("MongoDB connection successful")
-except ServerSelectionTimeoutError as e:
+except Exception as e:
     print(f"MongoDB connection failed: {e}")
     # Fallback to local MongoDB for development/testing
-    mongo_client = MongoClient("mongodb://localhost:27017/")
-    print("Connected to local MongoDB fallback")
-mongo_db = mongo_client['meeting_db']
-meetings_collection = mongo_db['meetings']
-solana_collection = mongo_db['solana_alert']         
+    try:
+        mongo_client = MongoClient("mongodb://localhost:27017/", serverSelectionTimeoutMS=5000)
+        mongo_client.admin.command('ping')
+        print("Connected to local MongoDB fallback")
+    except Exception as local_e:
+        print(f"Local MongoDB connection also failed: {local_e}")
+        mongo_client = None
+
+if mongo_client is None:
+    print("Warning: No MongoDB connection available")
+    # Implement some fallback behavior if needed
+else:
+    mongo_db = mongo_client['meeting_db']
+    meetings_collection = mongo_db['meetings']
+    solana_collection = mongo_db['solana_alert']
+    crypto_stock_collection = mongo_db['crypto_stock_limits']
 
 app = Flask(__name__)   
 scheduler = BackgroundScheduler()
