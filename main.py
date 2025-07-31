@@ -28,19 +28,21 @@ import smtplib
 import ssl
 
 # MongoDB Atlas connection
-MONGO_URI = "mongodb://localhost:27017/"
+MONGO_URI = "mongodb+srv://harshitvj24:Harshit%40321@cluster0.2rw2irv.mongodb.net/?retryWrites=false&w=majority&tls=true&tlsAllowInvalidCertificates=true&appName=Cluster0"
 from pymongo.errors import ServerSelectionTimeoutError
 
 try:
-    mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+    mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000, tls=True, tlsAllowInvalidCertificates=True)
     mongo_client.server_info()  # Force connection on a request as a test
-    print("Connected to local MongoDB")
+    print("MongoDB connection successful")
 except ServerSelectionTimeoutError as e:
-    print(f"Local MongoDB connection failed: {e}")
-    mongo_client = None
-mongo_db = mongo_client['meeting_db'] if mongo_client else None
-meetings_collection = mongo_db['meetings'] if mongo_db else None
-solana_collection = mongo_db['solana_alert'] if mongo_db else None         
+    print(f"MongoDB connection failed: {e}")
+    # Fallback to local MongoDB for development/testing
+    mongo_client = MongoClient("mongodb://localhost:27017/")
+    print("Connected to local MongoDB fallback")
+mongo_db = mongo_client['meeting_db']
+meetings_collection = mongo_db['meetings']
+solana_collection = mongo_db['solana_alert']         
 
 app = Flask(__name__)   
 scheduler = BackgroundScheduler()
